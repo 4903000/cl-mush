@@ -1,4 +1,7 @@
 (
+((MUSH::SOULHIGHT "mil") (MUSH::PASSWORD "testpw") (MUSH::HIGHT "mil")
+ (MUSH::SIGHT "A faint greenish apparition floating about.") (MUSH::POOLID 101)
+ (MUSH::KEYS (LIST "mil")))
 ((MUSH::SOULHIGHT "orky") (MUSH::PASSWORD "war") (MUSH::HIGHT "orky")
  (MUSH::SIGHT "A faint greenish apparition floating about.") (MUSH::POOLID 101)
  (MUSH::KEYS (LIST "orky")))

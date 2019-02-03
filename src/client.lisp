@@ -2,23 +2,33 @@
 
 (defparameter terminal-width 60)
 
+(defun octet-terpri (target)
+  "Readable, clean code is understandable; thus it gets optimized into unreadable and messy code.
+   This function is just a terpri equivalent for octet streams instead of character ones."
+  (write-byte (char-code #\newline) target))
+
 (defun send (target str)
   (unwind-protect
        (handler-case 
-	   (progn (setq soul nil)	     
+	   (progn
+	     (setq soul nil)	     
 	     (if (typep target 'soul)
 		 (setq soul target
 		       target (socket-stream (conn target))))
-	     (format target str)
-	     (terpri target)
+	     #| With this, send() can send both strings and plain byte vectors.
+	        Not so sure if it was useful after all but I'm leaving it in.
+	     |#
+	     (write-sequence (or (and (eql (array-element-type str) '(unsigned-byte 8)) str)
+				 (babel:string-to-octets (format nil str)))
+			     target)
+	     (octet-terpri target)
 	     (force-output target))
 	 (SB-BSD-SOCKETS:NOT-CONNECTED-ERROR ()
 	   (print "not-connected") (clean-soul soul))
 	 (SB-INT:CLOSED-STREAM-ERROR ()
 	   (print "closed-stream") (clean-soul soul))
 	 (SB-INT:SIMPLE-STREAM-ERROR ()
-	   (print "broken-pipe-error") (clean-soul soul))
-	 )))
+	   (print "broken-pipe-error") (clean-soul soul)))))
 
 (defun clean-soul (soul)
   (if soul (setf (things (ghost-pool soul))
@@ -27,7 +37,6 @@
 (defun send-bar (stream length)  
   (send stream
 	(c+ "=" (coerce (loop for x from 0 upto length collect #\-) 'string) "=")))
-    
 
 (defun newline (conn-stream &optional times)
   (send conn-stream "")
@@ -38,7 +47,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; (User Command Loop)
 ;;
-
+ 
 (defun welcome-connection (stream)
   (send-lines
    stream

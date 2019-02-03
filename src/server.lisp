@@ -2,7 +2,8 @@
   (ql:quickload '(:usocket
 		  :cl-ppcre
 		  :bordeaux-threads
-		  :local-time)))
+		  :local-time
+		  :babel)))
 
 (defpackage :mush
   (:use :cl :usocket :bordeaux-threads))
@@ -80,7 +81,9 @@
 
 
 (defun server-loop (which-socket port &optional (log-stream *standard-output*))
-  (eval `(setq ,which-socket (socket-listen "0.0.0.0" ,port :reuse-address t)))
+  (eval `(setq ,which-socket (socket-listen "0.0.0.0" ,port
+					    :element-type '(unsigned-byte 8)
+					    :reuse-address t)))
   (setq connections (list (symbol-value which-socket)))
   (let* ((server-running t))    
     (loop until (not server-running) do
@@ -90,9 +93,18 @@
 		   (handler-case 
 		       (progn
 			 (if (typep conn 'stream-server-usocket)			     
-			     (let* ((usocket-stream (socket-accept conn))
+			     (let* ((usocket-stream
+				     (socket-accept conn
+						    :element-type '(unsigned-byte 8)))
 				    (conn-stream (socket-stream usocket-stream)))
-			       (setq new-conn (make-new-connection usocket-stream conn-stream log-stream))
+			       (setq new-conn
+				     (make-new-connection usocket-stream conn-stream log-stream))
+			       (write-sequence (make-array 6 :element-type '(unsigned-byte 8)
+							   :initial-contents
+							   ; does this even work?
+							   ; IAC WONT CHARSET IAC WONT EASCII
+							   '(255 252  42      255 252  17))
+					       (socket-stream new-conn))
 			       (push new-conn connections)
 			       (setq conn new-conn)))
 			 			 
@@ -117,16 +129,27 @@
     
 
 (defun mush-start ()
-  (setq server-thread
-	(bt:make-thread
-	 (lambda () (server-loop 'server-socket 4444)) :name "mush-server")))
+  ;; if you were to previously run this twice you would end up with two server threads
+  ;; where the first one would be bound to the socket address and leave the second one
+  ;; dying in an ADDRESS-IN-USE error, while *server-thread* would get rewritten so these
+  ;; functions wouldn't be able to fix the situation.
+  (if (or (not server-thread) (not (thread-alive-p server-thread)))
+      (setq server-thread
+	    (bt:make-thread
+	     (lambda () (server-loop 'server-socket 4444)) :name "mush-server"))
+      (error "A server thread is already running and it is alive.")))
   
 
 (defun mush-stop ()
-  (bt:destroy-thread server-thread)
+  ;; if the server thread has died of its own fault, this would've failed previously.
+  ;; useful mostly for mush-restart() 
+  (and (bt:thread-alive-p server-thread) (bt:destroy-thread server-thread))
   (ignore-errors (socket-close server-socket))
+  ;; Disconnect users on server stop. They seem to lose functionality either way.
+  ;; only spares those whose connections are referenced in *connections*
+  (map 'nil #'socket-close connections)
   (setq server-running nil
-	connections '() ) 
+	connections '() )
   (print '(SERVER THREAD DESTROYED)))
 
 (defun mush-freeze ()
@@ -135,6 +158,13 @@
 (defun mush-restart ()
   (mush-stop)
   (mush-start))
+
+(defun kill-all-users ()
+  ;; is there a point to keeping the users around if
+  ;; their clients have died and/or can't interact with the server?
+  ;; or if they just disconnect on their own in a normal way?
+  ;; either way this disconnects all of them and lets me use my terminals again.
+  (map 'list (lambda (user) (socket-close (first user))) users))
 
 (mush-start)
 

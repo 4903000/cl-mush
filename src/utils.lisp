@@ -16,15 +16,40 @@
       (loop for thing in things collect
 	   (let ((out (make-instance kind)))
 	     (loop for field in thing do
-		  (eval (list 'setf (list (first field) out) `(quote ,(second field)))))		  
+		  (eval (list 'setf (list (first field) out) `(quote ,(second field)))))
 	     out)))))
 
 (defun uuid-integer () (random (* 256 256)))
 
+;; (defun read-all (stream)
+;;   (loop for char = (read-char-no-hang stream nil :eof)
+;;      until (or (null char) (eq char :eof)) collect char into msg
+;;      finally (return (coerce msg 'string))))
+
 (defun read-all (stream)
-  (loop for char = (read-char-no-hang stream nil :eof)
-     until (or (null char) (eq char :eof)) collect char into msg
-     finally (return (coerce (values msg char) 'string))))
+  "Returns a string interpreted from the octets in the stream.
+   Or an empty string if something goes wrong."
+  (if (listen stream)
+      (let ((msg (loop for char = (read-byte stream nil :eof)
+		    until (or (not (listen stream)) (eq char :eof))
+		    collecting char)))
+	(cond ((= (first msg) #xff) ; the client is sending telnet commands
+	       (progn (send stream "telnet messages are not supported at this time") ""))
+				    ; ideally there would be a telnet implementation here but
+	                            ; ignoring it like this makes the server not die in a fire
+	      (t
+	       (or (ignore-errors   ; honestly this sucks but if there's no way to enforce unicode
+		     (babel:octets-to-string  ; or ASCII it's all you can do to not kill the server.
+		      (make-array (length msg)
+				  :element-type '(unsigned-byte 8)
+				  :initial-contents msg)))
+		   (ignore-errors
+		     (babel:octets-to-string
+		      (make-array (length msg)
+				  :element-type '(unsigned-byte 8)
+				  :initial-contents msg)
+		      :encoding :cp1252)) ; pure guess
+		   (progn (send stream "please use plain ASCII or unicode") "")))))))
 
 (defun c+ (&rest strs)
   (apply 'concatenate

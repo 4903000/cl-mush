@@ -5,7 +5,7 @@
 
 # Install
 * install quicklisp
-* (ql:quickload '(:usocket :cl-ppcre :bordeaux-threads))
+* (ql:quickload '(:usocket :cl-ppcre :bordeaux-threads :local-time :babel))
 * (save-lisp-and-die "cl-mush.img")
 * sbcl --core cl-mush.img --load "src/server.lisp"
 
